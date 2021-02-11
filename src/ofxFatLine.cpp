@@ -11,7 +11,7 @@ ofxFatLine::ofxFatLine(){
 	bFeatherAtCap =true;
 	bFeatherAtCore = true;
 	bUseGlobalColor = false;
-	bUseGlobalWidth = 1;
+	bUseGlobalWidth = 0;
     //cout << "ofxFatLine" << endl;
 }
 //--------------------------------------------------------------
@@ -30,21 +30,21 @@ void ofxFatLine::setFromPolyline(ofPolyline & poly){
 	}		
 }
 //--------------------------------------------------------------
-ofxFatLine::ofxFatLine(const vector<ofDefaultVec3> &P,const vector<ofFloatColor> &C, const vector<double> &W, bool triangulation){
+ofxFatLine::ofxFatLine(const vector<glm::vec3> &P,const vector<ofFloatColor> &C, const vector<double> &W, bool triangulation){
     ofxFatLine();
     add(P, C, W);
     enableTriangulation(triangulation); 
    // update();
 }
 //--------------------------------------------------------------
-void ofxFatLine::add(const ofDefaultVec3 &thePoint, const ofFloatColor &theColor, const double &theWeight){
+void ofxFatLine::add(const glm::vec3 &thePoint, const ofFloatColor &theColor, const double &theWeight){
     addVertex(thePoint);
     addColor(theColor);
     addWeight(theWeight);
     update();
 }
 //--------------------------------------------------------------
-void ofxFatLine::add(const vector<ofDefaultVec3> &thePoints, const vector<ofFloatColor> &theColors, const vector<double> &theWeights){
+void ofxFatLine::add(const vector<glm::vec3> &thePoints, const vector<ofFloatColor> &theColors, const vector<double> &theWeights){
     addVertices(thePoints);
     addColors(theColors);
     addWeights(theWeights);
@@ -75,7 +75,7 @@ void ofxFatLine::setGlobalWidth(float w){
 	globalWidth = w;
 }
 //--------------------------------------------------------------
-void ofxFatLine::updatePoint(int index, ofDefaultVec3 p){
+void ofxFatLine::updatePoint(int index, glm::vec3 p){
     if (index < getVertices().size()) {
         getVertices()[index] = p;
     }
@@ -111,24 +111,86 @@ void ofxFatLine::updateMesh(){
     meshVertices.clear();
     meshColors.clear();
     meshIndices.clear();
-    for (int i =0; i<getVertices().size(); i++) {
-        updateVertex(i);
-        /*
-         ofDefaultVec3 a (getVertices()[i-1] - getVertices()[i]);
-         ofDefaultVec3 b (getVertices()[i+1] - getVertices()[i]);
-         
-         float  angle = a.angle(b);
-         
-         ofDefaultVec3 p = getMidVector(a, b);
-         bool flip = !sameSideOfLine(p, flippepMidVectors.back(), getVertices()[i-1], getVertices()[i]);
-         
-         float cs = cos(DEG_TO_RAD * (90 - angle*0.5f));
-         pushNewVertex(getVertices()[i], p, i, cs, flip);
-         //*/
+//    meshVertices.reserve(getVertices().size() * 10);
+//    meshColors.reserve(getVertices().size() * 10);
+//    meshIndices.reserve(getVertices().size() * 10);
+//    for (int i =0; i<getVertices().size(); i++) {
+//        updateVertex(i);
+//        /*
+//         ofDefaultVec3 a (getVertices()[i-1] - getVertices()[i]);
+//         ofDefaultVec3 b (getVertices()[i+1] - getVertices()[i]);
+//
+//         float  angle = a.angle(b);
+//
+//         ofDefaultVec3 p = getMidVector(a, b);
+//         bool flip = !sameSideOfLine(p, flippepMidVectors.back(), getVertices()[i-1], getVertices()[i]);
+//
+//         float cs = cos(DEG_TO_RAD * (90 - angle*0.5f));
+//         pushNewVertex(getVertices()[i], p, i, cs, flip);
+//         //*/
+//
+//    }
+    
+    
+    int A = 0, B = 0;
+    bool on = false;
+    if ( getVertices().size() == 0 ) return;
+    for (int i = 1; i < getVertices().size() - 1; i++) {
+        glm::vec3 V1 (getVertices()[i] - getVertices()[i-1]);
+        glm::vec3 V2 (getVertices()[i+1] - getVertices()[i]);
+        float len = 0;
+//        if (inopt.segmentLength != null) {
+//            V1 *= 1 / inopt.segmentLength[i];
+//            V2 *= 1 / inopt.segmentLength[i + 1];
+//            len += (inopt.segmentLength[i] + inopt.segmentLength[i + 1]) * 0.5f;
+//        } else {
+            len += glm::length(V1) * 0.5f;
+            len += glm::length(V2) * 0.5f;
         
-    }   
+        V1 = glm::normalize(V1);
+        V2 = glm::normalize(V2);
+//        }
+        float costho = V1.x * V2.x + V1.y * V2.y;
+        const float m_pi = (float) M_PI;
+        //float angle = acos(costho)*180/m_pi;
+        float cos_a = (float) cos(15.0f * m_pi / 180.0f);
+        float cos_b = (float) cos(10.0f * m_pi / 180.0f);
+        float cos_c = (float) cos(25.0f * m_pi / 180.0f);
+        float weight = bUseGlobalWidth ? globalWidth : getWeight(i);
+        bool approx = false;
+        if ((weight * worldToScreenRatio < 7 && costho > cos_a) || (costho > cos_b) || //when the angle difference at an anchor is smaller than a critical degree, do polyline approximation
+            (len < weight && costho > cos_c)) { //when vector length is smaller than weight, do approximation
+            approx = true;
+        }
+        if (approx && !on) {
+            A = i;
+            on = true;
+            if (A == 1) {
+                A = 0;
+            }
+            if (A > 1) {
+                polylineRange(B, A, false);
+            }
+        } else if (!approx && on) {
+            B = i;
+            on = false;
+            polylineRange(A, B, true);
+        }
+    }
+    if (on && B < getVertices().size() - 1) {
+        B = getVertices().size() - 1;
+        polylineRange(A, B, true);
+    } else if (!on && A < getVertices().size() - 1) {
+        A = getVertices().size() - 1;
+        polylineRange(B, A, false);
+    }
+//    holder = inopt.holder;
+//    inopt.holder = null;
+    
+    
     
     mesh.clear();
+    mesh.setMode(OF_PRIMITIVE_TRIANGLE_STRIP);
     mesh.addVertices(meshVertices);
     mesh.addColors(meshColors);
     mesh.addIndices(meshIndices);
@@ -143,34 +205,34 @@ void ofxFatLine::updateVertex(int index){
         updateCap(getVertices()[index-1], getVertices()[index], index);
         
     }else if ( getVertices().size() >2){
-        ofVec3f a (getVertices()[index-1] - getVertices()[index]);
-        ofVec3f b (getVertices()[index+1] - getVertices()[index]);
+        glm::vec3 a (getVertices()[index] - getVertices()[index-1]);
+        glm::vec3 b (getVertices()[index+1] - getVertices()[index]);
         
-        float  angle = a.angle(b);
+        float  angle = glm::angle(a, b);// a.angle(b);
         
-        ofVec3f p = getMidVector(a, b);
+        glm::vec3 p = getMidVector(a, b);
         ///Limits midvector length to avoid strange behaviour when angles are small.
-        float hyp = MIN(a.length(), b.length());
+        float hyp = MIN(glm::length(a), glm::length(b));
         hyp *= hyp;
         hyp += weights[index] * weights[index];
         hyp = sqrt(hyp);
         //------
         bool flip = !sameSideOfLine(p, flippepMidVectors.back(), getVertices()[index-1], getVertices()[index]);
         
-        float cs = cos(DEG_TO_RAD * (90 - angle*0.5f));
-        pushNewVertex(getVertices()[index], p, a.cross(ofVec3f(0,0,1).getNormalized()), b.cross(ofVec3f(0,0,1).getNormalized()),hyp, index, cs, flip);
+        float cs = cos(angle);
+        pushNewVertex(getVertices()[index], p, glm::cross(a, glm::normalize(glm::vec3(0, 0, 1))), glm::cross(b, glm::normalize(glm::vec3(0, 0, 1))), hyp, index, cs, flip);
     }
 }
 //--------------------------------------------------------------
-void ofxFatLine::pushNewAnchor(ofDefaultVec3 a, ofFloatColor c){
+void ofxFatLine::pushNewAnchor(glm::vec3 a, ofFloatColor c){
     meshVertices.push_back(a);
     meshColors.push_back(c);
 }
 //--------------------------------------------------------------
-void ofxFatLine::pushNewAnchors(ofDefaultVec3 v, ofDefaultVec3 dir, ofFloatColor color, float l1, float l2, bool bInv){
+void ofxFatLine::pushNewAnchors(glm::vec3 v, glm::vec3 dir, ofFloatColor color, float l1, float l2, bool bInv){
     
-    ofDefaultVec3 pp = dir * l1;
-    ofDefaultVec3 pa = pp + dir *l2;
+    glm::vec3 pp = dir * l1;
+    glm::vec3 pa = pp + dir *l2;
     ofFloatColor c(color.r, color.g, color.g, 0);
     if (!bInv) {
         pushNewAnchor(pp + v, color);        
@@ -184,20 +246,20 @@ void ofxFatLine::pushNewAnchors(ofDefaultVec3 v, ofDefaultVec3 dir, ofFloatColor
     
 }
 //--------------------------------------------------------------
-void ofxFatLine::pushNewVertex(ofVec3f v, ofVec3f p, ofVec3f r1, ofVec3f r2, float maxLength, int index, float cos, bool bFlipped){
+void ofxFatLine::pushNewVertex(glm::vec3 v, glm::vec3 p, glm::vec3 r1, glm::vec3 r2, float maxLength, int index, float cos, bool bFlipped){
     
     ofFloatColor c(colors[index]);
     c.a =0;
     if (cos == 0){
         cos = FLT_EPSILON;
     }
-    r1.normalize();
-    r2.normalize();
+    r1 = glm::normalize(r1);
+    r2 = glm::normalize(r2);
     bool bAligned = false;
-    if (abs(cos) == 1) {
-        bAligned = true;
-        p = r1;
-    }
+//    if (abs(cos) == 1) {
+//        bAligned = true;
+//        p = r1;
+//    }
     cos = 1/cos;
     
     midVectors.push_back(p);
@@ -206,7 +268,7 @@ void ofxFatLine::pushNewVertex(ofVec3f v, ofVec3f p, ofVec3f r1, ofVec3f r2, flo
     }
     flippepMidVectors.push_back(p);
     if (bAligned) {
-		cout << "vertexAligned" << endl;
+//		cout << "vertexAligned" << endl;
 		pushNewAnchors(v, p*-1, colors[index], weights[index], feathering, true);
         pushNewAnchor(v, colors[index]);
         pushNewAnchors(v, p, colors[index], weights[index], feathering, false);
@@ -220,10 +282,10 @@ void ofxFatLine::pushNewVertex(ofVec3f v, ofVec3f p, ofVec3f r1, ofVec3f r2, flo
         
     }else{
         
-        if (midVectors.back().dot(r1)>0) {
+        if (glm::dot(midVectors.back(), r1) > 0) {
             r1 *=-1;
         }
-        if (midVectors.back().dot(r2)>0) {
+        if (glm::dot(midVectors.back(), r2) > 0) {
             r2 *=-1;
         }    
         float midLength = weights[index]*cos;
@@ -235,8 +297,6 @@ void ofxFatLine::pushNewVertex(ofVec3f v, ofVec3f p, ofVec3f r1, ofVec3f r2, flo
             pushNewAnchors(v, midVectors.back(), colors[index], midLength, feathering*cos, bFlipped);
             pushNewAnchor(v, colors[index]);
             pushNewAnchors(v, r2, colors[index], weights[index], feathering, !bFlipped);
-            
-            
         }else{
             pushNewAnchors(v, r1, colors[index], weights[index], feathering, !bFlipped);
             pushNewAnchors(v, r2, colors[index], weights[index], feathering, !bFlipped);
@@ -320,10 +380,10 @@ void ofxFatLine::updateMeshIndices(){
 void ofxFatLine::updateJoint(int index, bool bFlip){
     int l = meshVertices.size()-1;
     if (joint == OFX_FATLINE_JOINT_MITER) {
-        cout << "update joint miter" << endl;
+//        cout << "update joint miter" << endl;
         
     }else if (joint == OFX_FATLINE_JOINT_BEVEL){
-        cout << "update joint bevel" << endl;
+//        cout << "update joint bevel" << endl;
         if (bFlip) {
             pushTriangleIndices(l -1, l-2, l-6);
             pushQuadIndices(l -6, l-5, l-1, l);
@@ -332,16 +392,16 @@ void ofxFatLine::updateJoint(int index, bool bFlip){
             pushQuadIndices(l -6, l-5, l-4, l-3);        
         }
     }else if (joint == OFX_FATLINE_JOINT_ROUND){
-        cout << "update joint round" << endl;        
+//        cout << "update joint round" << endl;        
         
     }
     
 }
 //--------------------------------------------------------------
-void ofxFatLine::updateCap(ofVec3f p1, ofVec3f p2, int index){
-    ofVec3f p = (p1 - p2).cross(ofVec3f(0,0,1)).normalize();
+void ofxFatLine::updateCap(glm::vec3 p1, glm::vec3 p2, int index){
+    glm::vec3 p = glm::normalize(glm::cross((p1 - p2), glm::vec3(0, 0, 1)));
     bool flip = false;
-    ofVec3f dir = (p2-p1).getNormalized();
+    glm::vec3 dir = glm::normalize(p2-p1);
     if (cap == OFX_FATLINE_CAP_SQUARE) {
         p2 =  dir * weights[index]*0.5f;
     }
@@ -429,3 +489,157 @@ void ofxFatLine::addWeights(const vector<double> &w){
 //--------------------------------------------------------------
 
 
+void ofxFatLine::polylineRange(int from, int to, bool approx){
+    if (from > 0) {
+        from -= 1;
+    }
+    
+//    bJointFirst = from !=0;
+//    bJointLast = to != (getVertices().size()-1);
+//    bNoCapFirst = bNoCapFirst || bJointFirst;
+//    bNoCapLast = bNoCapLast || bJointLast;
+    
+    if (approx) {
+        polylineApprox(from, to);
+    } else {
+        polylineExact(from, to);
+    }
+}
+
+void ofxFatLine::polylineApprox(int from, int to){
+    if (to - from + 1 < 2) {
+        return;
+    }
+    
+    bool joinFirst =  from !=0;
+    bool joinLast = to != (getVertices().size()-1);
+    bool capFirst = !(bNoCapFirst || joinFirst);
+    bool capLast =  !(bNoCapLast || joinLast);
+    
+//    mesh.setMode(OF_PRIMITIVE_TRIANGLE_STRIP);
+    
+    auto poly_step = [this](int i, glm::vec3 pp, float ww, ofColor cc) {
+        float t = 0, r = 0;
+        DetermineTr(ww, t, r, 1.0f/*opt.worldToScreenRatio*/);
+//        if (opt.feather && !opt.noFeatherAtCore) {
+//            r *= opt.feathering;
+//        }
+        float rr = (t + r) / r;
+        glm::vec3 V = getVertices()[i] - getVertices()[i - 1];
+        V = glm::normalize(glm::vec3(-V.y, V.x, 1));
+        V *= (t + r);
+        
+        meshVertices.push_back(pp - V);
+        meshColors.push_back(cc);
+        meshVertices.push_back(pp + V);
+        meshColors.push_back(cc);
+        
+//        vcore.Push(pp - V, cc, rr);
+//        vcore.Push(pp + V, cc, 0);
+    };
+    
+    for (int i = from + 1; i < to; i++) {
+        poly_step(i, getVertices()[i], bUseGlobalWidth ? globalWidth : getWeight(i), getColor(i));
+    }
+    glm::vec3 P_las, P_fir;
+    ofColor C_las , C_fir;
+    float W_las, W_fir = 0;
+    polyPointInter(P_las, C_las, W_las, to - 1, 0.5f);
+    poly_step(to, P_las, W_las, C_las);
+    
+    //StAnchor SA = new StAnchor();
+//               {
+//                   polyPointInter(P_fir, C_fir, W_fir, from, joinFirst ? 0.5f : 0.0f);
+//                   SA.P[0] = P_fir;
+//                   SA.P[1] = P[from + 1];
+//                   SA.C[0] = C_fir;
+//                   SA.C[1] = color(from + 1);
+//                   SA.W[0] = W_fir;
+//                   SA.W[1] = weight(from + 1);
+//                   Segment(SA, opt, capFirst, false, true);
+//               }
+//               if (!joinLast) {
+//                   SA.P[0] = P_las;
+//                   SA.P[1] = P[to];
+//                   SA.C[0] = C_las;
+//                   SA.C[1] = color(to);
+//                   SA.W[0] = W_las;
+//                   SA.W[1] = weight(to);
+//                   Segment(SA, opt, false, capLast, true);
+//               }
+//
+//               inopt.holder.Push(vcore);
+//               inopt.holder.Push(SA.vah);
+    
+}
+
+void ofxFatLine::polylineExact(int from, int to){
+    bool joinFirst = false;
+    glm::vec3 mid_l, mid_n; //the last and the next mid point
+    ofColor c_l, c_n;
+    float w_l = 0, w_n = 0;
+    
+    //init for the first anchor
+    polyPointInter(mid_l, c_l, w_l, from, joinFirst ? 0.5f : 0);
+    
+//    stAnchor SA = new stAnchor();
+//    if (to - from + 1 == 2) {
+//        SA.P[0] = P[from];
+//        SA.P[1] = P[from + 1];
+//        SA.C[0] = color(from);
+//        SA.C[1] = color(from + 1);
+//        SA.W[0] = weight(from);
+//        SA.W[1] = weight(from + 1);
+//        Segment(SA, capFirst, capLast, true);
+//    } else {
+//        for (int i = from + 1; i < to; i++) {
+//            if (i == to - 1 && !joinLast) {
+//                polyPointInter(mid_n, c_n, w_n, i, 1.0f);
+//            } else {
+//                polyPointInter(mid_n, c_n, w_n, i, 0.5f);
+//            }
+//
+//            SA.P[0] = mid_l;
+//            SA.C[0] = c_l;
+//            SA.W[0] = w_l;
+//            SA.P[2] = mid_n;
+//            SA.C[2] = c_n;
+//            SA.W[2] = w_n;
+//
+//            SA.P[1] = getVertices()[i];
+//            SA.C[1] = getColor(i);
+//            SA.W[1] = getWeight(i);
+//
+//            Anchor(SA, opt, (i == 1) && capFirst, (i == to - 1) && capLast);
+//
+//            mid_l = mid_n;
+//            c_l = c_n;
+//            w_l = w_n;
+//        }
+//    }
+}
+
+void ofxFatLine::polyPointInter(glm::vec3 &p, ofColor &c, float &w, int at, float t)
+{
+//    Color color(int I) {
+//        return C[inopt != null && inopt.constColor ? 0 : I];
+//    }
+//    float weight(int I) {
+//        return W[inopt != null && inopt.constWeight ? 0 : I];
+//    }
+
+    if (t == 0.0) {
+        p = getVertices()[at];
+        c = getColor(at);
+        w = bUseGlobalWidth ? globalWidth : getWeight(at);
+    } else if (t == 1.0) {
+        p = getVertices()[at + 1];
+        c = getColor(at + 1);
+        w = bUseGlobalWidth ? globalWidth : getWeight(at + 1);
+    } else {
+        p = (getVertices()[at] + getVertices()[at + 1]) * t;
+//        c = ofLerp Gradient.ColorBetween(color(at), color(at + 1), t);
+        c = getColor(at).lerp(getColor(at + 1), t);
+        w = bUseGlobalWidth ? globalWidth : ((getWeight(at) + getWeight(at + 1)) * t);
+    }
+}
