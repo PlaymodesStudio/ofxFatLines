@@ -106,6 +106,9 @@ ofColor ofxFatLine::getColor(int index){
         return ofColor();
     }
 }
+vector<ofFloatColor> ofxFatLine::getColors(){
+    return colors;
+}
 //--------------------------------------------------------------
 void ofxFatLine::updateMesh(){
     meshVertices.clear();

@@ -162,6 +162,7 @@ public:
     float getWeight(int index);
     void updateColor(int index, ofFloatColor& c);
     ofColor getColor(int index);
+    vector<ofFloatColor> getColors();
     ofMesh &getMesh(){return mesh;}
     void drawDebug();
     void printDebug();
